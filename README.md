@@ -3,7 +3,7 @@ start the nebulet server
 cargo run
 ```
 
-run basic tests agains the api
+run basic tests against the api
 ```
 ./test_api.sh
 ```
