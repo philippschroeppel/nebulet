@@ -106,22 +106,22 @@ impl Model {
     pub fn new(name: String, image: String) -> Self {
         CreateContainerRequest { name, image }.into()
     }
-    
+
     // You can still keep this method for explicit conversion
     pub fn into_response(self) -> ContainerResponse {
         self.into()
     }
-    
+
     pub fn update_status(&mut self, status: ContainerStatus) {
         self.status = status.as_str().to_string();
         self.updated_at = Utc::now().to_rfc3339();
     }
-    
+
     pub fn set_docker_id(&mut self, docker_id: String) {
         self.docker_id = Some(docker_id);
         self.updated_at = Utc::now().to_rfc3339();
     }
-    
+
     // Helper method to create an ActiveModel for insertion
     pub fn into_active_model(self) -> ActiveModel {
         ActiveModel {
@@ -134,4 +134,4 @@ impl Model {
             updated_at: Set(self.updated_at),
         }
     }
-} 
+}

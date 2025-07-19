@@ -1,10 +1,10 @@
 use anyhow::Result;
-use sea_orm::{DatabaseConnection, Statement, ConnectionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use tracing::info;
 
 pub async fn run_migrations(db: &DatabaseConnection) -> Result<()> {
     info!("Running database migrations...");
-    
+
     let create_containers_table = Statement::from_string(
         sea_orm::DatabaseBackend::Sqlite,
         r#"
@@ -17,11 +17,12 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<()> {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
-        "#.to_string(),
+        "#
+        .to_string(),
     );
-    
+
     db.execute(create_containers_table).await?;
-    
+
     info!("Database migrations completed successfully");
     Ok(())
-} 
+}
