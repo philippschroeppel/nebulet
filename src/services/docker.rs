@@ -1,6 +1,9 @@
 use crate::models::CreateContainerRequest;
 use anyhow::Result;
-use bollard::container::{Config, CreateContainerOptions, ListContainersOptions};
+use bollard::container::{
+    Config, CreateContainerOptions, InspectContainerOptions, ListContainersOptions,
+    RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
+};
 use bollard::Docker;
 use std::default::Default;
 use tracing::{error, info};
@@ -45,27 +48,63 @@ impl DockerService {
         Ok(container_id)
     }
 
-    pub async fn start_container(&self, container_id: &str) -> Result<()> {
-        info!("Starting container: {}", container_id);
-        // TODO: Implement actual container start
+    pub async fn start_container(&self, container_name: &str) -> Result<()> {
+        info!("Starting container: {}", container_name);
+        let options = Some(StartContainerOptions::<&str> {
+            ..Default::default()
+        });
+        match self._docker.start_container(container_name, options).await {
+            Ok(_) => info!("Container started successfully: {}", container_name),
+            Err(e) => {
+                error!("Failed to start container: {}", e);
+                return Err(e.into());
+            }
+        };
         Ok(())
     }
 
-    pub async fn stop_container(&self, container_id: &str) -> Result<()> {
-        info!("Stopping container: {}", container_id);
-        // TODO: Implement actual container stop
+    pub async fn stop_container(&self, container_name: &str) -> Result<()> {
+        info!("Stopping container: {}", container_name);
+        let options = Some(StopContainerOptions {
+            t: 30, // Timeout in seconds
+        });
+        match self._docker.stop_container(container_name, options).await {
+            Ok(_) => info!("Container stopped successfully: {}", container_name),
+            Err(e) => {
+                error!("Failed to stop container: {}", e);
+                return Err(e.into());
+            }
+        };
         Ok(())
     }
 
-    pub async fn remove_container(&self, container_id: &str) -> Result<()> {
-        info!("Removing container: {}", container_id);
-        // TODO: Implement actual container removal
+    pub async fn remove_container(&self, container_name: &str) -> Result<()> {
+        info!("Removing container: {}", container_name);
+        let options = Some(RemoveContainerOptions {
+            ..Default::default()
+        });
+        match self._docker.remove_container(container_name, options).await {
+            Ok(_) => info!("Container removed successfully: {}", container_name),
+            Err(e) => {
+                error!("Failed to remove container: {}", e);
+                return Err(e.into());
+            }
+        };
         Ok(())
     }
 
     pub async fn get_container_status(&self, _container_id: &str) -> Result<String> {
-        // TODO: Implement actual status check
-        Ok("running".to_string())
+        let options = Some(InspectContainerOptions {
+            ..Default::default()
+        });
+        let container_status = match self._docker.inspect_container(_container_id, options).await {
+            Ok(info) => info.state.unwrap().status.unwrap().to_string(),
+            Err(e) => {
+                error!("Failed to inspect container: {}", e);
+                return Err(e.into());
+            }
+        };
+        Ok(container_status)
     }
 
     pub async fn _list_containers(&self) -> Result<Vec<String>> {
