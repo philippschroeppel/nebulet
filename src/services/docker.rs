@@ -10,15 +10,20 @@ pub struct DockerService {
 }
 
 impl DockerService {
+    #[tracing::instrument]
     pub async fn new() -> Result<Self> {
         let docker = Docker::connect_with_local_defaults()?;
-        info!("Docker service initialized successfully");
+        let version = docker.version().await?;
+        info!(
+            version = version.version,
+            "Docker service initialized successfully"
+        );
         Ok(Self { _docker: docker })
     }
 
     pub async fn create_container(&self, request: &CreateContainerRequest) -> Result<String> {
         info!("Creating container: {}", request.name);
-        
+
         // TODO: Implement actual Docker container creation
         let container_id = format!("mock-{}", request.name);
         info!("Container created successfully: {}", container_id);
@@ -52,4 +57,4 @@ impl DockerService {
         // TODO: Implement actual container listing
         Ok(vec![])
     }
-} 
+}
