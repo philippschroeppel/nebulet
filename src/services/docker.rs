@@ -1,8 +1,9 @@
-use anyhow::Result;
-use bollard::Docker;
-use tracing::info;
-
 use crate::models::CreateContainerRequest;
+use anyhow::Result;
+use bollard::container::{Config, CreateContainerOptions, ListContainersOptions};
+use bollard::Docker;
+use std::default::Default;
+use tracing::{error, info};
 
 #[derive(Clone)]
 pub struct DockerService {
@@ -24,8 +25,22 @@ impl DockerService {
     pub async fn create_container(&self, request: &CreateContainerRequest) -> Result<String> {
         info!("Creating container: {}", request.name);
 
-        // TODO: Implement actual Docker container creation
-        let container_id = format!("mock-{}", request.name);
+        let options = Some(CreateContainerOptions {
+            name: &request.name,
+            platform: None,
+        });
+        let config = Config {
+            image: Some(request.image.clone()),
+            ..Default::default()
+        };
+
+        let container_id = match self._docker.create_container(options, config).await {
+            Ok(response) => response.id,
+            Err(e) => {
+                error!("Failed to create container: {}", e);
+                return Err(e.into());
+            }
+        };
         info!("Container created successfully: {}", container_id);
         Ok(container_id)
     }
@@ -54,7 +69,18 @@ impl DockerService {
     }
 
     pub async fn _list_containers(&self) -> Result<Vec<String>> {
-        // TODO: Implement actual container listing
-        Ok(vec![])
+        info!("Listing all containers");
+        let options = Some(ListContainersOptions::<&str> {
+            all: true,
+            ..Default::default()
+        });
+        let containers = match self._docker.list_containers(options).await {
+            Ok(containers) => containers.iter().filter_map(|c| c.id.clone()).collect(),
+            Err(e) => {
+                error!("Failed to list containers: {}", e);
+                return Err(e.into());
+            }
+        };
+        Ok(containers)
     }
 }
