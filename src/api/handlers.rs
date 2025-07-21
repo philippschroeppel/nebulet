@@ -27,49 +27,19 @@ pub async fn create_container(
 ) -> Result<(StatusCode, Json<ContainerResponse>), (StatusCode, Json<serde_json::Value>)> {
     info!("Creating container: {}", request.name);
 
-    let container_model: ContainerModel = request.clone().into();
-
-    let mut container_active_model = container_model.into_active_model();
+    let mut container_model: ContainerModel = request.clone().into();
     
     // Set initial status to "Pending" - processor will handle Docker creation
-    container_active_model.status = Set("Pending".to_string());
-    container_active_model.docker_id = Set(None);
+    container_model.status = "Pending".to_string();
+    container_model.docker_id = None;
 
-    // Use Entity::insert().exec() instead of ActiveModel.insert() to avoid the last_insert_id issue
-    let container_id = match &container_active_model.id {
-        sea_orm::ActiveValue::Set(id) => id.clone(),
-        _ => {
-            error!("Container ID not set in ActiveModel");
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
-            ));
-        }
-    };
+    let container_active_model = container_model.clone().into_active_model();
     
     ContainerEntity::insert(container_active_model)
         .exec(&state.db)
         .await
         .map_err(|e| {
             error!("Failed to create container in database: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
-            )
-        })?;
-
-    let container_model = ContainerEntity::find_by_id(container_id)
-        .one(&state.db)
-        .await
-        .map_err(|e| {
-            error!("Failed to fetch inserted container: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
-            )
-        })?
-        .ok_or_else(|| {
-            error!("Inserted container not found");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": "Database error" })),
