@@ -14,14 +14,12 @@ use crate::api::handlers::AppState;
 use crate::api::routes::create_router;
 use crate::config::Config;
 use crate::db::{establish_connection, run_migrations};
-use crate::services::{DockerService, ProcessorService};
+use crate::services::ProcessorService;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load configuration
     let config = Config::from_env();
 
-    // Initialize logging
     match config.log_json {
         true => {
             let subscriber = tracing_subscriber::fmt()
@@ -42,43 +40,21 @@ async fn main() -> Result<()> {
     info!("Starting Nebulet container service...");
     info!("Configuration: {:?}", config);
 
-    // Initialize database
     let db = establish_connection(&config).await?;
     run_migrations(&db).await?;
     info!("Database initialized successfully");
-
-    // Initialize Docker service
-    let docker = DockerService::new().await?;
-    info!("Docker service initialized successfully");
-
-    // Initialize processor service
-    let mut processor = ProcessorService::new(
-        config.processor_name.clone(),
-        AppState {
-            db: db.clone(),
-            docker: docker.clone(),
-        },
-    )
-    .await?;
+    
+    let mut processor = ProcessorService::new(config.processor_name.clone(), db.clone()).await?;
     info!("Processor service initialized successfully");
-
-    // Create application state
-    let state = AppState {
-        db: db.clone(),
-        docker,
-    };
-
-    // Create router
+    
+    let state = AppState { db };
+    
     let app = create_router(state);
-
-    // Start HTTP server and processor service concurrently
     let addr = format!("{}:{}", config.server_host, config.server_port).parse::<SocketAddr>()?;
-
     info!("Starting HTTP server on {}", addr);
-
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    // Run both services concurrently
+    // Run api and processor concurrently
     tokio::select! {
         result = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()) => {
             if let Err(e) = result {

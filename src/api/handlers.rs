@@ -4,19 +4,17 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use sea_orm::{DatabaseConnection, EntityTrait, Set};
+use sea_orm::{DatabaseConnection, EntityTrait, Set, ActiveModelTrait};
 use serde_json::json;
 use tracing::{error, info};
 
 use crate::models::v1::container::{
     ContainerResponse, CreateContainerRequest, Entity as ContainerEntity, Model as ContainerModel,
 };
-use crate::services::docker::DockerService;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseConnection,
-    pub docker: DockerService,
 }
 
 pub async fn health_check() -> (StatusCode, Json<serde_json::Value>) {
@@ -29,25 +27,13 @@ pub async fn create_container(
 ) -> Result<(StatusCode, Json<ContainerResponse>), (StatusCode, Json<serde_json::Value>)> {
     info!("Creating container: {}", request.name);
 
-    let docker_result = state.docker.create_container(&request).await;
-
     let container_model: ContainerModel = request.clone().into();
 
     let mut container_active_model = container_model.into_active_model();
-    let docker_id = if let Ok(docker_id) = &docker_result {
-        Some(docker_id.clone())
-    } else {
-        None
-    };
-
-    let status = if docker_result.is_ok() {
-        "Created"
-    } else {
-        "Failed"
-    };
-
-    container_active_model.status = Set(status.to_string());
-    container_active_model.docker_id = Set(docker_id);
+    
+    // Set initial status to "Pending" - processor will handle Docker creation
+    container_active_model.status = Set("Pending".to_string());
+    container_active_model.docker_id = Set(None);
 
     // Use Entity::insert().exec() instead of ActiveModel.insert() to avoid the last_insert_id issue
     let container_id = match &container_active_model.id {
@@ -60,6 +46,7 @@ pub async fn create_container(
             ));
         }
     };
+    
     ContainerEntity::insert(container_active_model)
         .exec(&state.db)
         .await
@@ -71,7 +58,6 @@ pub async fn create_container(
             )
         })?;
 
-    // Fetch the inserted container
     let container_model = ContainerEntity::find_by_id(container_id)
         .one(&state.db)
         .await
@@ -90,17 +76,9 @@ pub async fn create_container(
             )
         })?;
 
-    if let Err(e) = docker_result {
-        error!("Failed to create container in Docker: {}", e);
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Docker error" })),
-        ));
-    }
-
     let response: ContainerResponse = container_model.into();
 
-    info!("Container created successfully: {}", response.id);
+    info!("Container record created successfully: {}", response.id);
     Ok((StatusCode::CREATED, Json(response)))
 }
 
@@ -169,31 +147,18 @@ pub async fn delete_container(
                 Json(json!({ "error": "Container not found" })),
             )
         })?;
-
-    if let Some(docker_id) = &container.docker_id {
-        if let Err(e) = state.docker.stop_container(docker_id).await {
-            error!("Failed to stop container {}: {}", docker_id, e);
-        }
-
-        if let Err(e) = state.docker.remove_container(docker_id).await {
-            error!("Failed to remove container {}: {}", docker_id, e);
-        }
-    }
-
-    ContainerEntity::delete_by_id(container_id.clone())
-        .exec(&state.db)
-        .await
+    
+    // Mark container for removal - processor will handle actual Docker operations
+    let mut active_model = container.into_active_model();
+    active_model.status = Set("Removing".to_string());
+    active_model.updated_at = Set(chrono::Utc::now().to_rfc3339());
+    
+    active_model.update(&state.db).await
         .map_err(|e| {
-            error!("Failed to delete container from database: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
-            )
+            error!("Failed to mark container for removal: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
         })?;
-
-    info!("Container deleted successfully: {}", container_id);
-    Ok((
-        StatusCode::OK,
-        Json(json!({ "message": "Container deleted" })),
-    ))
+    
+    info!("Container marked for removal: {}", container_id);
+    Ok((StatusCode::OK, Json(json!({ "message": "Container marked for removal" }))))
 }

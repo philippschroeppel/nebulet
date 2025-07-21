@@ -1,5 +1,6 @@
-pub mod docker;
 pub mod processor;
 
-pub use docker::*;
+// Make docker module private to services, only accessible by processor
+mod docker;
+
 pub use processor::*;

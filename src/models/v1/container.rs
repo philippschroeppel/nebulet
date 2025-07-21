@@ -21,6 +21,7 @@ pub struct ContainerResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ContainerStatus {
+    Pending,
     Created,
     Running,
     Stopped,
@@ -31,6 +32,7 @@ pub enum ContainerStatus {
 impl ContainerStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
+            ContainerStatus::Pending => "Pending",
             ContainerStatus::Created => "Created",
             ContainerStatus::Running => "Running",
             ContainerStatus::Stopped => "Stopped",
@@ -69,7 +71,7 @@ impl From<CreateContainerRequest> for Model {
             id: Uuid::new_v4().to_string(),
             name: api_model.name,
             image: api_model.image,
-            status: ContainerStatus::Created.as_str().to_string(),
+            status: ContainerStatus::Pending.as_str().to_string(),
             docker_id: None,
             created_at: now.clone(),
             updated_at: now,
@@ -84,12 +86,13 @@ impl From<Model> for ContainerResponse {
             name: model.name,
             image: model.image,
             status: match model.status.as_str() {
+                "Pending" => ContainerStatus::Pending,
                 "Created" => ContainerStatus::Created,
                 "Running" => ContainerStatus::Running,
                 "Stopped" => ContainerStatus::Stopped,
                 "Failed" => ContainerStatus::Failed,
                 "Removing" => ContainerStatus::Removing,
-                _ => ContainerStatus::Created,
+                _ => ContainerStatus::Pending,
             },
             created_at: DateTime::parse_from_rfc3339(&model.created_at)
                 .map(|dt| dt.with_timezone(&Utc))
