@@ -9,7 +9,7 @@ run basic tests against the api
 ```
 
 ToDo
-- Docker integration
-- SeaORM Data Models (insert vs. update seem to need different types?)
-- Logging
-- ...?
+- Authentication & Authorization
+- Persistence (Volumes)
+- Networking (Tailnet)
+- Secret Management (e.g. how to pass S3 keys to containers?)
