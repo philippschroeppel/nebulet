@@ -43,12 +43,12 @@ async fn main() -> Result<()> {
     let db = establish_connection(&config).await?;
     run_migrations(&db).await?;
     info!("Database initialized successfully");
-    
+
     let mut processor = ProcessorService::new(config.processor_name.clone(), db.clone()).await?;
     info!("Processor service initialized successfully");
-    
+
     let state = AppState { db };
-    
+
     let app = create_router(state);
     let addr = format!("{}:{}", config.server_host, config.server_port).parse::<SocketAddr>()?;
     info!("Starting HTTP server on {}", addr);

@@ -19,7 +19,7 @@ pub struct ContainerResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ContainerStatus {
     Pending,
     Created,

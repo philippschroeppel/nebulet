@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use sea_orm::{DatabaseConnection, EntityTrait, Set, ActiveModelTrait};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 use serde_json::json;
 use tracing::{error, info};
 
@@ -28,13 +28,13 @@ pub async fn create_container(
     info!("Creating container: {}", request.name);
 
     let mut container_model: ContainerModel = request.clone().into();
-    
+
     // Set initial status to "Pending" - processor will handle Docker creation
     container_model.status = "Pending".to_string();
     container_model.docker_id = None;
 
     let container_active_model = container_model.clone().into_active_model();
-    
+
     ContainerEntity::insert(container_active_model)
         .exec(&state.db)
         .await
@@ -117,18 +117,23 @@ pub async fn delete_container(
                 Json(json!({ "error": "Container not found" })),
             )
         })?;
-    
+
     // Mark container for removal - processor will handle actual Docker operations
     let mut active_model = container.into_active_model();
     active_model.status = Set("Removing".to_string());
     active_model.updated_at = Set(chrono::Utc::now().to_rfc3339());
-    
-    active_model.update(&state.db).await
-        .map_err(|e| {
-            error!("Failed to mark container for removal: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Database error" })))
-        })?;
-    
+
+    active_model.update(&state.db).await.map_err(|e| {
+        error!("Failed to mark container for removal: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Database error" })),
+        )
+    })?;
+
     info!("Container marked for removal: {}", container_id);
-    Ok((StatusCode::OK, Json(json!({ "message": "Container marked for removal" }))))
+    Ok((
+        StatusCode::OK,
+        Json(json!({ "message": "Container marked for removal" })),
+    ))
 }

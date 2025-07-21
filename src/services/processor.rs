@@ -5,7 +5,9 @@ use std::sync::{Arc, Mutex};
 use tokio::time::Duration;
 use tracing::{error, info, warn};
 
-use crate::models::v1::container::{Entity as ContainerEntity, Model as ContainerModel, ActiveModel as ContainerActiveModel};
+use crate::models::v1::container::{
+    ActiveModel as ContainerActiveModel, Entity as ContainerEntity, Model as ContainerModel,
+};
 use crate::services::docker::DockerService;
 
 pub struct ProcessorService {
@@ -17,10 +19,10 @@ pub struct ProcessorService {
 impl ProcessorService {
     pub async fn new(processor_name: String, db: sea_orm::DatabaseConnection) -> Result<Self> {
         let shutdown_signal = Arc::new(Mutex::new(false));
-        
+
         // Create Docker service internally since it's private to this module
         let docker = DockerService::new().await?;
-        
+
         info!("Processor service initialized: {}", processor_name);
 
         Ok(Self {
@@ -61,7 +63,7 @@ impl ProcessorService {
 
     async fn process_containers(&self) -> Result<()> {
         let containers = ContainerEntity::find().all(&self.db).await?;
-        
+
         for container in containers {
             if let Err(e) = self.process_single_container(&container).await {
                 error!("Error processing container {}: {}", container.id, e);
@@ -76,17 +78,23 @@ impl ProcessorService {
             "Pending" => {
                 // Container is pending creation - create it in Docker
                 info!("Creating container in Docker: {}", container.name);
-                match self.docker.create_container(&crate::models::v1::container::CreateContainerRequest {
-                    name: container.name.clone(),
-                    image: container.image.clone(),
-                }).await {
+                match self
+                    .docker
+                    .create_container(&crate::models::v1::container::CreateContainerRequest {
+                        name: container.name.clone(),
+                        image: container.image.clone(),
+                    })
+                    .await
+                {
                     Ok(docker_id) => {
-                        self.update_container_status(&container.id, "Created", Some(docker_id)).await?;
+                        self.update_container_status(&container.id, "Created", Some(docker_id))
+                            .await?;
                         info!("Container created successfully: {}", container.id);
                     }
                     Err(e) => {
                         error!("Failed to create container {}: {}", container.id, e);
-                        self.update_container_status(&container.id, "Failed", None).await?;
+                        self.update_container_status(&container.id, "Failed", None)
+                            .await?;
                     }
                 }
             }
@@ -96,9 +104,11 @@ impl ProcessorService {
                     info!("Starting container: {}", docker_id);
                     if let Err(e) = self.docker.start_container(docker_id).await {
                         error!("Failed to start container {}: {}", docker_id, e);
-                        self.update_container_status(&container.id, "Failed", None).await?;
+                        self.update_container_status(&container.id, "Failed", None)
+                            .await?;
                     } else {
-                        self.update_container_status(&container.id, "Running", None).await?;
+                        self.update_container_status(&container.id, "Running", None)
+                            .await?;
                         info!("Container started successfully: {}", container.id);
                     }
                 }
@@ -108,7 +118,8 @@ impl ProcessorService {
                 if let Some(docker_id) = &container.docker_id {
                     let status = self.docker.get_container_status(docker_id).await?;
                     if status != "running" {
-                        self.update_container_status(&container.id, &status, None).await?;
+                        self.update_container_status(&container.id, &status, None)
+                            .await?;
                     }
                 }
             }
@@ -119,12 +130,12 @@ impl ProcessorService {
                     if let Err(e) = self.docker.stop_container(docker_id).await {
                         warn!("Failed to stop container {}: {}", docker_id, e);
                     }
-                    
+
                     if let Err(e) = self.docker.remove_container(docker_id).await {
                         warn!("Failed to remove container {}: {}", docker_id, e);
                     }
                 }
-                
+
                 // Delete from database
                 ContainerEntity::delete_by_id(container.id.clone())
                     .exec(&self.db)
@@ -148,7 +159,12 @@ impl ProcessorService {
         Ok(())
     }
 
-    async fn update_container_status(&self, container_id: &str, status: &str, docker_id: Option<String>) -> Result<()> {
+    async fn update_container_status(
+        &self,
+        container_id: &str,
+        status: &str,
+        docker_id: Option<String>,
+    ) -> Result<()> {
         let container = ContainerEntity::find_by_id(container_id.to_string())
             .one(&self.db)
             .await?
@@ -157,13 +173,13 @@ impl ProcessorService {
         let mut active_model: ContainerActiveModel = container.into();
         active_model.status = Set(status.to_string());
         active_model.updated_at = Set(Utc::now().to_rfc3339());
-        
+
         if let Some(docker_id) = docker_id {
             active_model.docker_id = Set(Some(docker_id));
         }
-        
+
         active_model.update(&self.db).await?;
-        
+
         info!("Updated container {} status to {}", container_id, status);
         Ok(())
     }
